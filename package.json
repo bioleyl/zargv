@@ -23,9 +23,22 @@
   "scripts": {
     "clean": "rm -rf dist",
     "build": "npm run clean && rollup -c rollup.config.mjs && tsc -p tsconfig.json --emitDeclarationOnly --declaration --declarationDir dist/types --outDir dist/types",
+    "dev": "rollup -c rollup.config.mjs -w",
     "test": "vitest run",
     "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "release:check": "npm run test && npm run build && npm pack --dry-run",
+    "publish:guard": "node -e \"if (process.env.GITHUB_ACTIONS !== 'true') { console.error('Publishing is restricted to the manual GitHub Actions workflow (workflow_dispatch).'); process.exit(1); }\"",
+    "prepublishOnly": "npm run publish:guard && npm run build",
     "demo": "tsx examples/demo.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bioleyl/zargv"
   },
   "peerDependencies": {
     "zod": "^3.24.0 || ^4.0.0"

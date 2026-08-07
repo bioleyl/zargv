@@ -1,0 +1,144 @@
+name: Publish npm package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Exact semver version to publish (example: 0.2.0). Leave empty to use bump instead."
+        required: false
+        type: string
+      bump:
+        description: "Version bump to apply when version is empty."
+        required: false
+        type: choice
+        default: none
+        options:
+          - none
+          - patch
+          - minor
+          - major
+          - prerelease
+      prerelease_id:
+        description: "Prerelease id used when bump is prerelease (example: rc)."
+        required: false
+        type: string
+        default: rc
+      dist_tag:
+        description: "npm dist-tag for this publish."
+        required: false
+        type: choice
+        default: latest
+        options:
+          - latest
+          - next
+      dry_run:
+        description: "Run build and npm pack --dry-run without uploading package."
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Ensure manual GitHub Actions execution
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" ]]; then
+            echo "This workflow only supports manual workflow_dispatch runs."
+            exit 1
+          fi
+          if [[ "${GITHUB_ACTIONS}" != "true" ]]; then
+            echo "Publishing is restricted to GitHub Actions."
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate publish inputs
+        shell: bash
+        run: |
+          if [[ -n "${{ inputs.version }}" && "${{ inputs.bump }}" != "none" ]]; then
+            echo "Set either 'version' or 'bump', not both."
+            exit 1
+          fi
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Prepare version
+        id: prepare_version
+        shell: bash
+        run: |
+          VERSION_CHANGED=false
+
+          if [[ -n "${{ inputs.version }}" ]]; then
+            if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+              npm version "${{ inputs.version }}" --no-git-tag-version
+            else
+              npm version "${{ inputs.version }}"
+            fi
+            VERSION_CHANGED=true
+          elif [[ "${{ inputs.bump }}" != "none" ]]; then
+            if [[ "${{ inputs.bump }}" == "prerelease" ]]; then
+              if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+                npm version prerelease --preid "${{ inputs.prerelease_id }}" --no-git-tag-version
+              else
+                npm version prerelease --preid "${{ inputs.prerelease_id }}"
+              fi
+            else
+              if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+                npm version "${{ inputs.bump }}" --no-git-tag-version
+              else
+                npm version "${{ inputs.bump }}"
+              fi
+            fi
+            VERSION_CHANGED=true
+          fi
+
+          echo "version_changed=$VERSION_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Build package
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+      - name: Pack dry-run
+        if: inputs.dry_run
+        run: npm pack --dry-run
+
+      - name: Publish package (trusted publishing)
+        if: ${{ !inputs.dry_run }}
+        run: npm publish --access public --provenance --tag "${{ inputs.dist_tag }}"
+
+      - name: Push version commit and tags
+        if: ${{ !inputs.dry_run && steps.prepare_version.outputs.version_changed == 'true' }}
+        run: git push --follow-tags origin "${GITHUB_REF_NAME}"
+
+      - name: Summary
+        run: |
+          echo "Published version: ${{ steps.prepare_version.outputs.version }}"
+          echo "Dist tag: ${{ inputs.dist_tag }}"
+          echo "Dry run: ${{ inputs.dry_run }}"
