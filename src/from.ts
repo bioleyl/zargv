@@ -128,9 +128,10 @@ function buildOption(
 // Public API — zargv.from(schema, options?)
 // ---------------------------------------------------------------------------
 
-export interface FromOptions {
-  /** Map of canonical key → short CLI flag character */
-  aliases?: Record<string, string>;
+export interface FromOptions<T extends z.AnyZodObject = z.AnyZodObject>
+{
+  /** Map of canonical key → short CLI flag character. Keys must match schema property names. */
+  aliases?: Partial<Record<keyof T["shape"], string>>;
 }
 
 /** Internal shape returned by `from()` — carries schema type for inference. */
@@ -184,7 +185,7 @@ function fieldMetaOf(type: z.ZodTypeAny): FieldMeta {
  */
 export function from<T extends z.AnyZodObject>(
   schema: T,
-  options?: FromOptions,
+  options?: FromOptions<T>,
 ): ArgsDefInternal<T> {
   const aliases = options?.aliases ?? {};
 
@@ -202,7 +203,7 @@ export function from<T extends z.AnyZodObject>(
 
   for (const [key, fieldSchema] of Object.entries(shape as Record<string, z.ZodTypeAny>)) {
     const kind = resolveBaseKind(fieldSchema);
-    const alias = aliases[key];
+    const alias = key in aliases ? (aliases as Record<string, string | undefined>)[key] : undefined;
     const meta = fieldMetaOf(fieldSchema);
     parseOptions[key] = buildOption(kind, alias);
 
