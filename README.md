@@ -2,18 +2,18 @@
 
 A **type-safe CLI framework** powered by [Zod](https://zod.dev). Define your command tree once, validate everything through schemas you already trust, and keep handler types inferred end-to-end.
 
-## Table des matières
+## Table of Contents
 
 1. [Installation](#installation)
-2. [Premier exemple : une commande sans arguments](#premier-exemple-une-commande-sans-arguments)
-3. [Ajouter des options avec `--flag <value>`](#ajouter-des-options-avec---flag-value)
-4. [Drapeaux booléens (`--verbose`)](#drapeaux-booléens----verbose)
-5. [Valeurs par défaut](#valeurs-par-défaut)
-6. [Arguments positionnels : un seul operand](#arguments-positionnels-un-seul-operand)
-7. [Arguments positionnels : plusieurs operands](#arguments-positionnels-plusieurs-operands)
-8. [Composer une arborescence de commandes](#composer-une-arborescence-de-commandes)
-9. [Handlers externes avec `HandlerCtx`](#handlers-externes-avec-handlerctx)
-10. [Référence API](#référence-api)
+2. [First Example: A Command Without Arguments](#first-example-a-command-without-arguments)
+3. [Adding Options with `--flag <value>`](#adding-options-with---flag-value)
+4. [Boolean Flags (`--verbose`)](#boolean-flags----verbose)
+5. [Default Values](#default-values)
+6. [Positional Arguments: A Single Operand](#positional-arguments-a-single-operand)
+7. [Positional Arguments: Multiple Operands](#positional-arguments-multiple-operands)
+8. [Composing a Command Tree](#composing-a-command-tree)
+9. [External Handlers with `HandlerCtx`](#external-handlers-with-handlerctx)
+10. [API Reference](#api-reference)
 
 ---
 
@@ -25,9 +25,9 @@ npm install zargv zod
 
 ---
 
-## Premier exemple : une commande sans arguments
+## First Example: A Command Without Arguments
 
-La forme la plus simple — une commande qui fait quelque chose, sans aucun argument :
+The simplest form — a command that does something, without any arguments:
 
 ```ts
 import { zargv } from "zargv";
@@ -50,9 +50,9 @@ Hello!
 
 ---
 
-## Ajouter des options avec `--flag <value>`
+## Adding Options with `--flag <value>`
 
-Pour accepter des arguments nommés, on utilise `zargv.from()` qui convertit un schéma Zod en définition d'options :
+To accept named arguments, use `zargv.from()` which converts a Zod schema into an options definition:
 
 ```ts
 import { z } from "zod";
@@ -68,7 +68,7 @@ export default zargv.command({
   ),
 
   async handler({ args }) {
-    // TypeScript connaît : args.name est string
+    // TypeScript knows: args.name is string
     console.log(`Hello, ${args.name}!`);
   },
 });
@@ -81,20 +81,20 @@ $ mycli greet --name Alice
 Hello, Alice!
 ```
 
-Les alias raccourcis sont optionnels :
+Short aliases are optional:
 
 ```ts
 zargv.from(
   z.object({ name: z.string() }),
-  { aliases: { name: "n" } }, // maintenant -n et --name fonctionnent tous les deux
+  { aliases: { name: "n" } }, // now both -n and --name work
 );
 ```
 
 ---
 
-## Drapeaux booléens (`--verbose`)
+## Boolean Flags (`--verbose`)
 
-Les booléens agissent comme des drapeaux : la présence du flag active la valeur, son absence la désactive.
+Booleans act as flags: the presence of the flag activates the value, its absence deactivates it.
 
 ```ts
 import { z } from "zod";
@@ -128,9 +128,9 @@ $ mycli build --verbose # → [verbose] Starting build...
 
 ---
 
-## Valeurs par défaut
+## Default Values
 
-Quand une option a une valeur par défaut, elle devient facultative — le flag n'apparaît pas dans la signature d'utilisation.
+When an option has a default value, it becomes optional — the flag does not appear in the usage signature.
 
 ```ts
 import { z } from "zod";
@@ -161,9 +161,9 @@ $ mycli users create -n Alice --admin    # → Creating user Alice (admin=true)
 
 ---
 
-## Arguments positionnels : un seul operand
+## Positional Arguments: A Single Operand
 
-Pour les commandes qui acceptent exactement **un** argument positionnel, utilisez `zargv.positionals.single()` :
+For commands that accept exactly **one** positional argument, use `zargv.positionals.single()`:
 
 ```ts
 import { z } from "zod";
@@ -178,7 +178,7 @@ export default zargv.command({
   ]),
 
   async handler({ positionals }) {
-    // TypeScript connaît : positionals.destination est string
+    // TypeScript knows: positionals.destination is string
     console.log(`Staging to ${positionals.destination}`);
   },
 });
@@ -188,15 +188,15 @@ Usage :
 
 ```bash
 $ mycli stage dist/       # → Staging to dist/
-$ mycli stage             # → Erreur : exactement un operand requis
-$ mycli stage a b         # → Erreur : trop d'operands
+$ mycli stage             # → Error: exactly one operand required
+$ mycli stage a b         # → Error: too many operands
 ```
 
 ---
 
-## Arguments positionnels : plusieurs operands
+## Positional Arguments: Multiple Operands
 
-Pour les commandes avec **plusieurs** arguments positionnels, utilisez `zargv.positionals.splitLast()` — il sépare tous les operands sauf le dernier en un groupe, et le dernier reste seul. C'est le pattern classique de `cp SOURCE... DEST` ou `mv SOURCE... DIR` :
+For commands with **multiple** positional arguments, use `zargv.positionals.splitLast()` — it splits all operands except the last into a group, and keeps the last one separate. This is the classic pattern of `cp SOURCE... DEST` or `mv SOURCE... DIR`:
 
 ```ts
 import { z } from "zod";
@@ -233,9 +233,9 @@ $ mycli mv -f a.txt b.txt c.txt output/
 
 ---
 
-## Composer une arborescence de commandes
+## Composing a Command Tree
 
-Les commandes se composent en arbres. Une commande parente n'a pas de handler — elle contient des sous-commandes :
+Commands compose into trees. A parent command has no handler — it contains sub-commands:
 
 ```ts
 // src/commands/users/create.ts
@@ -244,10 +244,10 @@ import remove from "./remove";
 
 export default zargv.command({
   description: "Manage users",
-  commands: { create, remove }, // ← sous-commandes
+  commands: { create, remove }, // ← sub-commands
 });
 
-// src/cli.ts — point d'entrée
+// src/cli.ts — entry point
 import users from "./commands/users";
 
 zargv({
@@ -257,7 +257,7 @@ zargv({
 }).run(process.argv);
 ```
 
-Résultat :
+Result :
 
 ```bash
 $ mycli --help
@@ -272,15 +272,15 @@ Creating user Bob (admin=false)
 
 ---
 
-## Handlers externes avec `HandlerCtx`
+## External Handlers with `HandlerCtx`
 
-Pour séparer la définition des commandes de leur logique, utilisez le type helper `HandlerCtx` :
+To separate command definitions from their logic, use the helper type `HandlerCtx`:
 
 ```ts
 import { z } from "zod";
 import { zargv, HandlerCtx } from "zargv";
 
-// 1. Définir les args et positionnels séparément
+// 1. Define args and positionals separately
 const mvArgs = zargv.from(
   z.object({ force: z.boolean().default(false) }),
   { aliases: { force: "f" } },
@@ -291,7 +291,7 @@ const mvPositionals = zargv.positionals.splitLast([
   ["directory", z.string()],
 ]);
 
-// 2. Construire la commande avec un handler inline qui délègue
+// 2. Build the command with an inline handler that delegates
 export default zargv.command({
   description: "Move files",
   args: mvArgs,
@@ -299,10 +299,10 @@ export default zargv.command({
   async handler(ctx) { await handleMove(ctx); },
 });
 
-// 3. Inférer le type complet du contexte
+// 3. Infer the full context type
 type MvCtx = HandlerCtx<typeof import("./mv").default>;
 
-// 4. Écrire la logique séparément — typée automatiquement
+// 4. Write logic separately — automatically typed
 async function handleMove({ args, positionals }: MvCtx) {
   console.log(args.force, positionals.sources, positionals.directory);
 }
@@ -310,32 +310,32 @@ async function handleMove({ args, positionals }: MvCtx) {
 
 ---
 
-## Référence API
+## API Reference
 
 ### `zargv.from(schema, options?)`
 
-Convertit un schéma Zod en définition d'options pour `zargv.command()`.
+Converts a Zod schema into an options definition for `zargv.command()`.
 
-| Paramètre | Description |
+| Parameter | Description |
 |-----------|-------------|
-| `schema` | Un `ZodObject`, ex. `z.object({ name: z.string() })` |
-| `options.aliases` | Map optionnel : clé canonique → caractère de flag raccourci |
+| `schema` | A `ZodObject`, e.g. `z.object({ name: z.string() })` |
+| `options.aliases` | Optional map: canonical key → short flag character |
 
 ### `zargv.command(options)`
 
-Construit un nœud de commande (feuille ou parente).
+Builds a command node (leaf or parent).
 
-| Paramètre | Description |
+| Parameter | Description |
 |-----------|-------------|
-| `description` | Description courte, affichée dans l'aide |
-| `args` | Définition d'options depuis `zargv.from()` (optionnel) |
-| `positionals` | Définition de positionnels (optionnel) |
-| `commands` | Sous-commandes imbriquées (optionnel) |
-| `handler(ctx)` | Fonction recevant `{ args, positionals }` |
+| `description` | Short description, displayed in help |
+| `args` | Options definition from `zargv.from()` (optional) |
+| `positionals` | Positional arguments definition (optional) |
+| `commands` | Nested sub-commands (optional) |
+| `handler(ctx)` | Function receiving `{ args, positionals }` |
 
 ### `zargv.positionals.single(tuple)`
 
-Commande avec exactement **un** operand.
+Command with exactly **one** operand.
 
 ```ts
 zargv.positionals.single(["destination", z.string()]);
@@ -343,7 +343,7 @@ zargv.positionals.single(["destination", z.string()]);
 
 ### `zargv.positionals.splitLast(tuple)`
 
-Pattern `SOURCE... DEST` — tous les operands sauf le dernier forment un groupe, le dernier est seul.
+`SOURCE... DEST` pattern — all operands except the last form a group, the last one is separate.
 
 ```ts
 zargv.positionals.splitLast([
@@ -354,10 +354,10 @@ zargv.positionals.splitLast([
 
 ### `zargv(options).run(argv)`
 
-Crée et exécute une application CLI.
+Creates and runs a CLI application.
 
-| Paramètre | Description |
+| Parameter | Description |
 |-----------|-------------|
-| `name` | Nom du binaire (affiché dans l'aide) |
-| `description` | Description de niveau racine |
-| `commands` | Arborescence des commandes |
+| `name` | Binary name (displayed in help) |
+| `description` | Root-level description |
+| `commands` | Command tree |
