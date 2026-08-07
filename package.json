@@ -1,0 +1,33 @@
+{
+  "name": "zargv",
+  "version": "0.1.0",
+  "description": "A Zod-first CLI framework where Zod schemas remain the single source of truth.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "demo": "tsx examples/demo.ts"
+  },
+  "peerDependencies": {
+    "zod": "^3.24.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.23.9",
+    "typescript": "^7.0.2",
+    "vitest": "^3.1.0",
+    "zod": "^3.24.0"
+  }
+}
