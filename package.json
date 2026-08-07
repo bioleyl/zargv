@@ -1,21 +1,28 @@
 {
-  "name": "zargv",
+  "name": "@bioleyl/zargv",
   "version": "0.1.0",
   "description": "A Zod-first CLI framework where Zod schemas remain the single source of truth.",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/cjs/index.cjs",
+  "types": "./dist/types/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "import": {
+        "types": "./dist/types/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/types/index.d.ts",
+        "default": "./dist/cjs/index.cjs"
+      }
     }
   },
   "files": [
     "dist/"
   ],
   "scripts": {
-    "build": "tsc",
+    "clean": "rm -rf dist",
+    "build": "npm run clean && rollup -c rollup.config.mjs && tsc -p tsconfig.json --emitDeclarationOnly --declaration --declarationDir dist/types --outDir dist/types",
     "test": "vitest run",
     "test:watch": "vitest",
     "demo": "tsx examples/demo.ts"
@@ -24,7 +31,10 @@
     "zod": "^3.24.0 || ^4.0.0"
   },
   "devDependencies": {
+    "@rollup/plugin-swc": "^0.4.1",
+    "@swc/core": "^1.15.47",
     "@types/node": "^22.15.0",
+    "rollup": "^4.40.0",
     "tsx": "^4.23.9",
     "typescript": "^7.0.2",
     "vitest": "^3.1.0",
