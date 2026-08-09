@@ -1,6 +1,6 @@
 {
   "name": "@bioleyl/zargv",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A Zod-first CLI framework where Zod schemas remain the single source of truth.",
   "type": "module",
   "main": "./dist/cjs/index.cjs",
