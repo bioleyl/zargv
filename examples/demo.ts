@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/// <reference types="node" />
 /**
  * zargv Demo — a sample CLI built with zargv.
  * Run it locally: npx tsx examples/demo.ts <command> [options]
@@ -33,7 +34,7 @@ const listUsersSchema = z.object({
     .positive()
     .max(100)
     .default(20)
-    .describe("Max results to return (1–100)"),
+    .describe("Max results to return (1-100)"),
 });
 
 const updateProfileSchema = z.object({

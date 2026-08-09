@@ -30,7 +30,9 @@
     "release:check": "npm run test && npm run build && npm pack --dry-run",
     "publish:guard": "node -e \"if (process.env.GITHUB_ACTIONS !== 'true') { console.error('Publishing is restricted to the manual GitHub Actions workflow (workflow_dispatch).'); process.exit(1); }\"",
     "prepublishOnly": "npm run publish:guard && npm run build",
-    "demo": "tsx examples/demo.ts"
+    "demo": "tsx examples/demo.ts",
+    "lint": "biome check .",
+    "lint:fix": "biome check . --fix"
   },
   "publishConfig": {
     "access": "public",
@@ -44,6 +46,7 @@
     "zod": "^3.24.0 || ^4.0.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.7",
     "@rollup/plugin-swc": "^0.4.1",
     "@swc/core": "^1.15.47",
     "@types/node": "^22.15.0",

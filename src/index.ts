@@ -1,8 +1,9 @@
-import { parseArgs } from "node:util";
-import { basename } from "node:path";
-import { z } from "zod";
-import type { ArgsDef, CommandNode, LeafCommand, PositionalsDef } from "./types.js";
-import { command as _command, resolveCommand } from "./command.js";
+import { basename } from 'node:path';
+import { parseArgs } from 'node:util';
+
+import { z } from 'zod';
+
+import { command as _command, resolveCommand } from './command.js';
 import {
   buildLeafUsage,
   generateHelp,
@@ -10,15 +11,18 @@ import {
   isHelpFlag,
   printCommandHelp,
   printHelp,
-} from "./help.js";
-import { positionals as _positionals } from "./positionals.js";
+} from './help.js';
+import { positionals as _positionals } from './positionals.js';
+
+import type { ParseArgsConfig } from 'node:util';
+import type { ArgsDef, CommandNode, PositionalsDef } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Re-export the `from` factory (used by consumers to create args definitions).
 // The actual implementation lives in ./from.ts and is imported here.
 // ---------------------------------------------------------------------------
 
-import { from as _from } from "./from.js";
+import { from as _from } from './from.js';
 
 // ---------------------------------------------------------------------------
 // zargv() — root factory that returns a runnable CLI instance.
@@ -45,21 +49,21 @@ interface InternalPositionalsDef extends PositionalsDef<unknown> {
 
 function parseCommandArgs(
   remaining: string[],
-  argsDef?: InternalArgsDef,
+  argsDef?: InternalArgsDef
 ): { values: Record<string, unknown>; positionals: string[] } {
   if (!argsDef?._parseArgsConfig) {
-    return { values: {}, positionals: remaining };
+    return { positionals: remaining, values: {} };
   }
 
   try {
     const parseResult = parseArgs({
-      args: remaining,
-      options: argsDef._parseArgsConfig as any,
-      strict: false, // allow unknown flags — we check them manually.
       allowPositionals: true,
+      args: remaining,
+      options: argsDef._parseArgsConfig as ParseArgsConfig['options'],
+      strict: false, // allow unknown flags — we check them manually.
     });
 
-    return { values: parseResult.values, positionals: parseResult.positionals };
+    return { positionals: parseResult.positionals, values: parseResult.values };
   } catch (err) {
     console.error(`Error parsing arguments:\n${(err as Error).message}`);
     process.exit(1);
@@ -67,10 +71,12 @@ function parseCommandArgs(
 }
 
 function exitOnUnexpectedPositionals(positionals: string[]): void {
-  if (positionals.length === 0) return;
+  if (positionals.length === 0) {
+    return;
+  }
 
-  const suffix = positionals.length === 1 ? "" : "s";
-  console.error(`Error: unexpected positional argument${suffix}: ${positionals.join(" ")}`);
+  const suffix = positionals.length === 1 ? '' : 's';
+  console.error(`Error: unexpected positional argument${suffix}: ${positionals.join(' ')}`);
   process.exit(1);
 }
 
@@ -78,7 +84,7 @@ function validateCommandPositionals(
   rawPositionals: string[],
   positionalsDef?: InternalPositionalsDef,
   usageLine?: string,
-  helpCommand?: string,
+  helpCommand?: string
 ): unknown {
   if (!positionalsDef) {
     exitOnUnexpectedPositionals(rawPositionals);
@@ -88,7 +94,9 @@ function validateCommandPositionals(
   try {
     return positionalsDef._parsePositionals(rawPositionals);
   } catch (err) {
-    if (!(err instanceof z.ZodError)) throw err;
+    if (!(err instanceof z.ZodError)) {
+      throw err;
+    }
 
     printValidationErrors(err, usageLine, helpCommand);
     process.exit(1);
@@ -96,15 +104,17 @@ function validateCommandPositionals(
 }
 
 function exitOnUnknownOptions(parsedValues: Record<string, unknown>, argsDef?: InternalArgsDef): void {
-  if (!argsDef) return;
+  if (!argsDef) {
+    return;
+  }
 
   const schema = argsDef.__zargv_schema__;
-  const knownKeys = schema instanceof z.ZodObject
-    ? new Set(Object.keys(schema.shape))
-    : new Set<string>();
+  const knownKeys = schema instanceof z.ZodObject ? new Set(Object.keys(schema.shape)) : new Set<string>();
 
   for (const key of Object.keys(parsedValues)) {
-    if (knownKeys.has(key)) continue;
+    if (knownKeys.has(key)) {
+      continue;
+    }
 
     console.error(`Error: unrecognized option "--${key}"`);
     process.exit(1); // unreachable in tests due to mocked exit.
@@ -112,19 +122,20 @@ function exitOnUnknownOptions(parsedValues: Record<string, unknown>, argsDef?: I
 }
 
 function printValidationErrors(error: z.ZodError, usageLine?: string, helpCommand?: string): void {
-  console.error("Validation errors:");
+  console.error('Validation errors:');
 
   for (const issue of error.issues) {
-    const path = issue.path.join(".");
-    const message = issue.code === "invalid_enum_value" && Array.isArray(issue.options)
-      ? `Invalid value for ${path}. Expected one of: [${issue.options.join(" | ")}]`
-      : issue.message;
+    const path = issue.path.join('.');
+    const message =
+      issue.code === 'invalid_enum_value' && Array.isArray(issue.options)
+        ? `Invalid value for ${path}. Expected one of: [${issue.options.join(' | ')}]`
+        : issue.message;
 
-    console.error(`  ${path ? `${path}: ` : ""}${message}`);
+    console.error(`  ${path ? `${path}: ` : ''}${message}`);
   }
 
   if (usageLine) {
-    console.error("");
+    console.error('');
     console.error(`Usage: ${usageLine}`);
   }
 
@@ -137,14 +148,18 @@ function validateCommandArgs(
   parsedValues: Record<string, unknown>,
   argsDef?: InternalArgsDef,
   usageLine?: string,
-  helpCommand?: string,
+  helpCommand?: string
 ): unknown {
-  if (!argsDef) return {};
+  if (!argsDef) {
+    return {};
+  }
 
   try {
     return argsDef.__zargv_schema__.parse(parsedValues);
   } catch (err) {
-    if (!(err instanceof z.ZodError)) throw err;
+    if (!(err instanceof z.ZodError)) {
+      throw err;
+    }
 
     printValidationErrors(err, usageLine, helpCommand);
     process.exit(1);
@@ -162,7 +177,7 @@ function zargv(options: ZargvOptions): RunnableCLI {
 
       // Check for --help / -h at the root level (no subcommand given).
       if (tokens.length === 0 || isHelpFlag(tokens[0])) {
-        printHelp(options.name, options.description ?? "", options.commands);
+        printHelp(options.name, options.description ?? '', options.commands);
         return;
       }
 
@@ -170,12 +185,12 @@ function zargv(options: ZargvOptions): RunnableCLI {
       const resolved = resolveCommand(options.commands, tokens);
 
       if (!resolved) {
-        console.error(`Error: unknown command "${tokens.join(" ")}"\n`);
-        printHelp(options.name, options.description ?? "", options.commands);
+        console.error(`Error: unknown command "${tokens.join(' ')}"\n`);
+        printHelp(options.name, options.description ?? '', options.commands);
         process.exit(1); // unreachable in tests due to mocked exit.
       }
 
-      if (resolved.type === "parent_help") {
+      if (resolved.type === 'parent_help') {
         // --help encountered mid-path or at end of parent command — show subcommand list.
         console.log(generateHelp(resolved.commands, undefined));
         return;
@@ -183,7 +198,7 @@ function zargv(options: ZargvOptions): RunnableCLI {
 
       const remaining = resolved.remainingArgs;
       const consumedTokenCount = tokens.length - remaining.length;
-      const commandPath = tokens.slice(0, consumedTokenCount).join(" ");
+      const commandPath = tokens.slice(0, consumedTokenCount).join(' ');
       const scriptName = argv[1] ? basename(argv[1]) : options.name;
       const usagePrefix = commandPath ? `${scriptName} ${commandPath}` : scriptName;
       const usageLine = buildLeafUsage(resolved.command, { usagePrefix }) ?? usagePrefix;
@@ -219,30 +234,27 @@ function zargv(options: ZargvOptions): RunnableCLI {
 // Attach helpers to the zargv namespace for consumer convenience.
 // ---------------------------------------------------------------------------
 
-const _zargv: typeof zargv & {
+const _zargv = Object.assign(zargv, {
+  /** Build a leaf or parent command node */
+  command: _command,
+
+  /** Convert a Zod schema into an args definition for `zargv.command()` */
+  from: _from,
+
+  /** Positional argument helpers */
+  positionals: _positionals,
+}) as typeof zargv & {
   command: typeof _command;
   from: typeof _from;
   positionals: typeof _positionals;
-} = Object.assign(
-  zargv as any,
-  {
-    /** Build a leaf or parent command node */
-    command: _command,
+};
 
-    /** Convert a Zod schema into an args definition for `zargv.command()` */
-    from: _from,
-
-    /** Positional argument helpers */
-    positionals: _positionals,
-  },
-);
-
-export { _zargv as zargv };
+export type { FromOptions } from './from.js';
 export type {
   ArgsDef,
   CommandNode,
   HandlerCtx,
   LeafCommand,
   PositionalsDef,
-} from "./types.js";
-export type { FromOptions } from "./from.js";
+} from './types.js';
+export { _zargv as zargv };
