@@ -10,11 +10,16 @@ type BaseKind = 'string' | 'number' | 'boolean' | 'array' | 'enum';
 type InternalParseOption = ParsedArgOption & { multiple?: boolean; choices?: readonly (string | number)[] };
 
 type ZodDefLike = {
-  typeName: string;
+  typeName?: string;
+  type?: string;
   description?: string;
   innerType?: z.ZodTypeAny;
   schema?: z.ZodTypeAny;
+  in?: z.ZodTypeAny;
+  out?: z.ZodTypeAny;
+  valueType?: z.ZodTypeAny;
   values?: readonly string[] | Record<string, string | number>;
+  entries?: Record<string, string | number>;
   defaultValue?: () => unknown;
 };
 
@@ -22,49 +27,77 @@ function getDef(type: z.ZodTypeAny): ZodDefLike {
   return (type as unknown as { _def: ZodDefLike })._def;
 }
 
+function getTypeTag(type: z.ZodTypeAny): string {
+  const def = getDef(type);
+  // Zod v3 uses `_def.typeName`; v4 may expose a shorter `_def.type` tag.
+  return def.typeName ?? def.type ?? '';
+}
+
+function isWrapperTag(tag: string): boolean {
+  return [
+    // v3 wrappers
+    'ZodOptional',
+    'ZodDefault',
+    'ZodEffects',
+    'ZodPipeline',
+    'ZodTransform',
+    // v4-style tags
+    'optional',
+    'default',
+    'effects',
+    'pipe',
+    'transform',
+  ].includes(tag);
+}
+
+function isZodType(value: unknown): value is z.ZodTypeAny {
+  return typeof value === 'object' && value !== null && 'safeParse' in value;
+}
+
+function nextWrappedType(type: z.ZodTypeAny): z.ZodTypeAny | undefined {
+  const def = getDef(type);
+  const tag = getTypeTag(type);
+
+  if (!isWrapperTag(tag)) {
+    return undefined;
+  }
+
+  // Different Zod versions/wrappers store the wrapped schema under different keys.
+  const candidates: unknown[] = [def.innerType, def.schema, def.in, def.out];
+  return candidates.find(isZodType);
+}
+
 /** Unwrap optional / default / effects layers and return the innermost base kind */
 function resolveBaseKind(type: z.ZodTypeAny): BaseKind {
   // Iteratively unwrap all wrapper types to reach the base.
   let current = type;
   while (true) {
-    const def = getDef(current);
-    switch (def.typeName) {
-      case 'ZodOptional':
-        if (!def.innerType) {
-          break;
-        }
-        current = def.innerType; // ZodOptional wraps in _def.innerType since v3.20+
-        continue;
-      case 'ZodDefault':
-        if (!def.innerType) {
-          break;
-        }
-        current = def.innerType;
-        continue;
-      case 'ZodEffects':
-        if (!def.schema) {
-          break;
-        }
-        current = def.schema;
-        continue;
-      default:
-        break;
+    const next = nextWrappedType(current);
+    if (!next) {
+      break;
     }
-    break; // Reached the base type.
+    current = next;
   }
 
-  const base = current;
-  switch (getDef(base).typeName) {
+  switch (getTypeTag(current)) {
+    // v3 + v4 scalar tags
     case 'ZodString':
+    case 'string':
       return 'string';
     case 'ZodNumber':
+    case 'number':
       return 'number';
     case 'ZodBoolean':
+    case 'boolean':
       return 'boolean';
     case 'ZodArray':
+    case 'array':
       return 'array';
     case 'ZodEnum':
     case 'ZodNativeEnum':
+    // v4 enum/nativeEnum tags
+    case 'enum':
+    case 'nativeEnum':
       return 'enum';
     default:
       // Fallback — treat everything else as string (covers coerce, literals, etc.)
@@ -83,29 +116,11 @@ function describeOf(type: z.ZodTypeAny): string | undefined {
       return desc;
     }
 
-    switch (def.typeName) {
-      case 'ZodOptional':
-        if (!def.innerType) {
-          break;
-        }
-        current = def.innerType;
-        continue;
-      case 'ZodDefault':
-        if (!def.innerType) {
-          break;
-        }
-        current = def.innerType;
-        continue;
-      case 'ZodEffects':
-        if (!def.schema) {
-          break;
-        }
-        current = def.schema;
-        continue;
-      default:
-        break;
+    const next = nextWrappedType(current);
+    if (!next) {
+      break;
     }
-    break; // Reached the base type without finding a description.
+    current = next;
   }
 
   return undefined;
@@ -115,29 +130,11 @@ function describeOf(type: z.ZodTypeAny): string | undefined {
 function unwrapToBase(type: z.ZodTypeAny): z.ZodTypeAny {
   let current = type;
   while (true) {
-    const def = getDef(current);
-    switch (def.typeName) {
-      case 'ZodOptional':
-        if (!def.innerType) {
-          return current;
-        }
-        current = def.innerType;
-        continue;
-      case 'ZodDefault':
-        if (!def.innerType) {
-          return current;
-        }
-        current = def.innerType;
-        continue;
-      case 'ZodEffects':
-        if (!def.schema) {
-          return current;
-        }
-        current = def.schema;
-        continue;
-      default:
-        return current;
+    const next = nextWrappedType(current);
+    if (!next) {
+      return current;
     }
+    current = next;
   }
 }
 
@@ -207,29 +204,39 @@ function fieldMetaOf(type: z.ZodTypeAny): FieldMeta {
 
   while (true) {
     const def = getDef(current);
-    switch (def.typeName) {
+    const tag = getTypeTag(current);
+    switch (tag) {
       case 'ZodOptional':
+      case 'optional':
         optional = true;
-        if (!def.innerType) {
+        if (!def.innerType || !isZodType(def.innerType)) {
           return { defaultValue, hasDefault, optional };
         }
         current = def.innerType;
         continue;
       case 'ZodDefault':
+      case 'default':
         optional = true;
         hasDefault = true;
         defaultValue = def.defaultValue ? def.defaultValue() : undefined;
-        if (!def.innerType) {
+        if (!def.innerType || !isZodType(def.innerType)) {
           return { defaultValue, hasDefault, optional };
         }
         current = def.innerType;
         continue;
       case 'ZodEffects':
-        if (!def.schema) {
+      case 'effects':
+      case 'ZodPipeline':
+      case 'pipe':
+      case 'ZodTransform':
+      case 'transform': {
+        const next = nextWrappedType(current);
+        if (!next) {
           return { defaultValue, hasDefault, optional };
         }
-        current = def.schema;
+        current = next;
         continue;
+      }
       default:
         return { defaultValue, hasDefault, optional };
     }
@@ -244,7 +251,9 @@ function fieldMetaOf(type: z.ZodTypeAny): FieldMeta {
 export function from<T extends z.AnyZodObject>(schema: T, options?: FromOptions<T>): ArgsDefInternal<T> {
   const aliases = options?.aliases ?? {};
 
-  if (schema._def.typeName !== 'ZodObject') {
+  const schemaTag = getTypeTag(schema as z.ZodTypeAny);
+  // v3 object tag (`ZodObject`) and v4 object tag (`object`).
+  if (schemaTag !== 'ZodObject' && schemaTag !== 'object') {
     throw new TypeError('zargv.from() requires a ZodObject schema');
   }
 
@@ -266,13 +275,26 @@ export function from<T extends z.AnyZodObject>(schema: T, options?: FromOptions<
     if (kind === 'enum') {
       const base = unwrapToBase(fieldSchema as z.ZodTypeAny);
       const baseDef = getDef(base);
-      if (baseDef.typeName === 'ZodEnum' && Array.isArray(baseDef.values)) {
+      const baseTag = getTypeTag(base);
+      // v3 enum stores options in `_def.values`.
+      if ((baseTag === 'ZodEnum' || baseTag === 'enum') && Array.isArray(baseDef.values)) {
         parseOptions[key].choices = baseDef.values;
-      } else if (baseDef.typeName === 'ZodNativeEnum' && baseDef.values && !Array.isArray(baseDef.values)) {
+      } else if (
+        // v3 native enum stores key/value object in `_def.values`.
+        (baseTag === 'ZodNativeEnum' || baseTag === 'nativeEnum')
+        && baseDef.values
+        && !Array.isArray(baseDef.values)
+      ) {
         const enumObj = baseDef.values;
         parseOptions[key].choices = Object.entries(enumObj)
           .filter(([, v]) => typeof v === 'string' || typeof v === 'number')
           .map(([, v]) => String(v));
+      } else if (baseDef.entries) {
+        // v4 may expose enum entries under `_def.entries`.
+        const enumObj = baseDef.entries;
+        parseOptions[key].choices = Object.values(enumObj)
+          .filter((v) => typeof v === 'string' || typeof v === 'number')
+          .map((v) => String(v));
       }
     }
 
