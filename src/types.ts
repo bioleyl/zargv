@@ -1,11 +1,9 @@
-import type { z } from 'zod';
-
 // ---------------------------------------------------------------------------
 // ArgsDef — carries the original Zod schema type through generics so that
 // `command()` can infer handler argument types without re-parsing schemas.
 // ---------------------------------------------------------------------------
 
-export interface ArgsDef<T extends z.ZodTypeAny = z.ZodTypeAny> {
+export interface ArgsDef<T = unknown> {
   /** Internal brand — never used at runtime, only for TypeScript inference */
   // biome-ignore lint/style/useNamingConvention: Internal brand key is intentionally namespaced.
   __zargv_schema__: T;
@@ -21,8 +19,14 @@ export interface PositionalsDef<T = unknown> {
 /** Extract the Zod schema type from an ArgsDef wrapper */
 export type UnwrapArgsDef<A> = A extends ArgsDef<infer T> ? T : never;
 
+type InferParsedOutput<T> = T extends { parse: (value: unknown) => infer O } ? O : unknown;
+
+// Infer from `parse()` structurally instead of z.output<T> so args typing works
+// across Zod majors without requiring one specific base class type.
+
 /** Infer handler args from an ArgsDef (or void when absent). */
-export type InferArgs<A extends ArgsDef | undefined> = A extends ArgsDef<infer T> ? z.output<T> : undefined;
+export type InferArgs<A extends ArgsDef | undefined> =
+  A extends ArgsDef<infer T> ? InferParsedOutput<T> : undefined;
 
 /** Infer handler positionals from a PositionalsDef (or undefined when absent). */
 export type InferPositionals<P extends PositionalsDef | undefined> =

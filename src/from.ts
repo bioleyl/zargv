@@ -20,8 +20,12 @@ type ZodDefLike = {
   valueType?: z.ZodTypeAny;
   values?: readonly string[] | Record<string, string | number>;
   entries?: Record<string, string | number>;
-  defaultValue?: () => unknown;
+  defaultValue?: unknown;
 };
+
+function readDefaultValue(value: unknown): unknown {
+  return typeof value === 'function' ? (value as () => unknown)() : value;
+}
 
 function getDef(type: z.ZodTypeAny): ZodDefLike {
   return (type as unknown as { _def: ZodDefLike })._def;
@@ -173,13 +177,21 @@ function buildOption(
 // Public API — zargv.from(schema, options?)
 // ---------------------------------------------------------------------------
 
-export interface FromOptions<T extends z.AnyZodObject = z.AnyZodObject> {
+type ZodSchemaLike = {
+  parse(value: unknown): unknown;
+  safeParse(value: unknown): unknown;
+};
+
+// Keep this structural so both Zod v3 and v4 object schemas are accepted.
+type ZodObjectLike = ZodSchemaLike & { shape: Record<string, unknown> };
+
+export interface FromOptions<T extends ZodObjectLike = ZodObjectLike> {
   /** Map of canonical key → short CLI flag character. Keys must match schema property names. */
-  aliases?: Partial<Record<keyof T['shape'], string>>;
+  aliases?: Partial<Record<Extract<keyof T['shape'], string>, string>>;
 }
 
 /** Internal shape returned by `from()` — carries schema type for inference. */
-interface ArgsDefInternal<T extends z.AnyZodObject> {
+interface ArgsDefInternal<T extends ZodObjectLike> {
   // biome-ignore lint/style/useNamingConvention: Internal brand key is intentionally namespaced.
   __zargv_schema__: T;
   _aliases: Record<string, string>;
@@ -218,7 +230,7 @@ function fieldMetaOf(type: z.ZodTypeAny): FieldMeta {
       case 'default':
         optional = true;
         hasDefault = true;
-        defaultValue = def.defaultValue ? def.defaultValue() : undefined;
+        defaultValue = readDefaultValue(def.defaultValue);
         if (!def.innerType || !isZodType(def.innerType)) {
           return { defaultValue, hasDefault, optional };
         }
@@ -248,10 +260,12 @@ function fieldMetaOf(type: z.ZodTypeAny): FieldMeta {
  * `zargv.command()`. The returned value carries the original Zod type through
  * TypeScript generics so handler inference works automatically.
  */
-export function from<T extends z.AnyZodObject>(schema: T, options?: FromOptions<T>): ArgsDefInternal<T> {
+export function from<T extends ZodObjectLike>(schema: T, options?: FromOptions<T>): ArgsDefInternal<T> {
   const aliases = options?.aliases ?? {};
 
-  const schemaTag = getTypeTag(schema as z.ZodTypeAny);
+  // Tag inspection still uses Zod internals; cast stays local to avoid leaking
+  // version-specific class constraints into the public from() signature.
+  const schemaTag = getTypeTag(schema as unknown as z.ZodTypeAny);
   // v3 object tag (`ZodObject`) and v4 object tag (`object`).
   if (schemaTag !== 'ZodObject' && schemaTag !== 'object') {
     throw new TypeError('zargv.from() requires a ZodObject schema');

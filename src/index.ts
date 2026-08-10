@@ -109,7 +109,17 @@ function exitOnUnknownOptions(parsedValues: Record<string, unknown>, argsDef?: I
   }
 
   const schema = argsDef.__zargv_schema__;
-  const knownKeys = schema instanceof z.ZodObject ? new Set(Object.keys(schema.shape)) : new Set<string>();
+  // Use structural checks instead of `instanceof z.ZodObject` so this works
+  // when consumers use a different Zod major/version instance.
+  const shape =
+    typeof schema === 'object'
+    && schema !== null
+    && 'shape' in schema
+    && typeof (schema as { shape?: unknown }).shape === 'object'
+    && (schema as { shape?: unknown }).shape !== null
+      ? (schema as { shape: Record<string, unknown> }).shape
+      : undefined;
+  const knownKeys = shape ? new Set(Object.keys(shape)) : new Set<string>();
 
   for (const key of Object.keys(parsedValues)) {
     if (knownKeys.has(key)) {
