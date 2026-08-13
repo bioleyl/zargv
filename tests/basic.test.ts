@@ -132,7 +132,7 @@ describe("zargv.from() — defaults", () => {
     expect(capturedArgs).toEqual({ name: "Bob", admin: true });
   });
 
-  it("keeps compatibility when default metadata is callable", () => {
+  it("reads default metadata", () => {
     const schema = z.object({ enabled: z.boolean().default(true) });
 
     const def = from(schema) as {
@@ -140,28 +140,6 @@ describe("zargv.from() — defaults", () => {
     };
 
     expect(def._defaultMap.get("enabled")).toBe(true);
-  });
-
-  it("supports literal default metadata shape", () => {
-    const schema = z.object({ mode: z.string() });
-    const base = z.string();
-    const field = schema.shape.mode as unknown as {
-      _def: { typeName: string; innerType: unknown; defaultValue: unknown };
-    };
-
-    field._def = {
-      defaultValue: "safe",
-      innerType: base,
-      typeName: "ZodDefault",
-    };
-
-    const def = from(schema) as {
-      _defaultMap: Map<string, unknown>;
-      _optionalMap: Map<string, boolean>;
-    };
-
-    expect(def._optionalMap.get("mode")).toBe(true);
-    expect(def._defaultMap.get("mode")).toBe("safe");
   });
 });
 

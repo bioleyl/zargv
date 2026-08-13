@@ -21,9 +21,6 @@ export type UnwrapArgsDef<A> = A extends ArgsDef<infer T> ? T : never;
 
 type InferParsedOutput<T> = T extends { parse: (value: unknown) => infer O } ? O : unknown;
 
-// Infer from `parse()` structurally instead of z.output<T> so args typing works
-// across Zod majors without requiring one specific base class type.
-
 /** Infer handler args from an ArgsDef (or void when absent). */
 export type InferArgs<A extends ArgsDef | undefined> =
   A extends ArgsDef<infer T> ? InferParsedOutput<T> : undefined;

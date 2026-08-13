@@ -2,9 +2,9 @@ import { z } from 'zod';
 
 import type { PositionalsDef } from './types.js';
 
-type SplitLastTuple = readonly [readonly [string, z.ZodTypeAny], readonly [string, z.ZodTypeAny]];
+type SplitLastTuple = readonly [readonly [string, z.ZodType], readonly [string, z.ZodType]];
 
-type SingleTuple = readonly [string, z.ZodTypeAny];
+type SingleTuple = readonly [string, z.ZodType];
 
 type SplitLastOutput<T extends SplitLastTuple> = { [K in T[0][0]]: z.output<T[0][1]> } & {
   [K in T[1][0]]: z.output<T[1][1]>;

@@ -38,7 +38,7 @@ interface RunnableCLI {
   run(argv: string[]): Promise<void>;
 }
 
-interface InternalArgsDef extends ArgsDef<z.ZodTypeAny> {
+interface InternalArgsDef extends ArgsDef<z.ZodObject> {
   _parseArgsConfig?: Record<string, unknown>;
 }
 
@@ -108,18 +108,7 @@ function exitOnUnknownOptions(parsedValues: Record<string, unknown>, argsDef?: I
     return;
   }
 
-  const schema = argsDef.__zargv_schema__;
-  // Use structural checks instead of `instanceof z.ZodObject` so this works
-  // when consumers use a different Zod major/version instance.
-  const shape =
-    typeof schema === 'object'
-    && schema !== null
-    && 'shape' in schema
-    && typeof (schema as { shape?: unknown }).shape === 'object'
-    && (schema as { shape?: unknown }).shape !== null
-      ? (schema as { shape: Record<string, unknown> }).shape
-      : undefined;
-  const knownKeys = shape ? new Set(Object.keys(shape)) : new Set<string>();
+  const knownKeys = new Set(Object.keys(argsDef.__zargv_schema__.shape));
 
   for (const key of Object.keys(parsedValues)) {
     if (knownKeys.has(key)) {
@@ -136,12 +125,7 @@ function printValidationErrors(error: z.ZodError, usageLine?: string, helpComman
 
   for (const issue of error.issues) {
     const path = issue.path.join('.');
-    const message =
-      issue.code === 'invalid_enum_value' && Array.isArray(issue.options)
-        ? `Invalid value for ${path}. Expected one of: [${issue.options.join(' | ')}]`
-        : issue.message;
-
-    console.error(`  ${path ? `${path}: ` : ''}${message}`);
+    console.error(`  ${path ? `${path}: ` : ''}${issue.message}`);
   }
 
   if (usageLine) {

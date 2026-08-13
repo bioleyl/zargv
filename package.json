@@ -1,6 +1,6 @@
 {
   "name": "@bioleyl/zargv",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "A Zod-first CLI framework where Zod schemas remain the single source of truth.",
   "type": "module",
   "main": "./dist/cjs/index.cjs",
@@ -43,7 +43,7 @@
     "url": "https://github.com/bioleyl/zargv"
   },
   "peerDependencies": {
-    "zod": "^3.24.0 || ^4.0.0"
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.7",
@@ -54,6 +54,6 @@
     "tsx": "^4.23.9",
     "typescript": "^7.0.2",
     "vitest": "^3.1.0",
-    "zod": "^3.24.0"
+    "zod": "^4.0.0"
   }
 }

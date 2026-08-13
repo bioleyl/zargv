@@ -57,8 +57,8 @@ describe("wrong parameters — error handling", () => {
     }
 
     expect(exitCode).toBe(1);
-    // Zod should complain about the missing required field.
-    expect(stderrOutput.toLowerCase()).toContain("required");
+    // Zod should complain that the required field is undefined.
+    expect(stderrOutput.toLowerCase()).toContain("received undefined");
   });
 
   it("rejects wrong value type without coercion", async () => {

@@ -1,64 +1,52 @@
-import type { z } from 'zod';
+/** biome-ignore-all lint/style/useNamingConvention: Zod key names */
+import { z } from 'zod';
+
 import type { ParsedArgOption } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Internal helpers — inspect Zod schema to determine parseArgs option shape.
-// These work with the public _def introspection that is stable across Zod v3.
 // ---------------------------------------------------------------------------
 
 type BaseKind = 'string' | 'number' | 'boolean' | 'array' | 'enum';
 type InternalParseOption = ParsedArgOption & { multiple?: boolean; choices?: readonly (string | number)[] };
+type AliasesMap = Record<string, string>;
 
 type ZodDefLike = {
-  typeName?: string;
-  type?: string;
-  description?: string;
-  innerType?: z.ZodTypeAny;
-  schema?: z.ZodTypeAny;
-  in?: z.ZodTypeAny;
-  out?: z.ZodTypeAny;
-  valueType?: z.ZodTypeAny;
-  values?: readonly string[] | Record<string, string | number>;
+  type: string;
+  innerType?: z.ZodType;
+  in?: z.ZodType;
+  out?: z.ZodType;
   entries?: Record<string, string | number>;
   defaultValue?: unknown;
 };
 
-function readDefaultValue(value: unknown): unknown {
-  return typeof value === 'function' ? (value as () => unknown)() : value;
+const WRAPPER_TAGS = new Set(['optional', 'default', 'pipe']);
+
+const KIND_BY_TAG: Record<string, BaseKind | undefined> = {
+  array: 'array',
+  boolean: 'boolean',
+  enum: 'enum',
+  number: 'number',
+  string: 'string',
+};
+
+function getDef(type: z.ZodType): ZodDefLike {
+  return type.def as ZodDefLike;
 }
 
-function getDef(type: z.ZodTypeAny): ZodDefLike {
-  return (type as unknown as { _def: ZodDefLike })._def;
-}
-
-function getTypeTag(type: z.ZodTypeAny): string {
-  const def = getDef(type);
-  // Zod v3 uses `_def.typeName`; v4 may expose a shorter `_def.type` tag.
-  return def.typeName ?? def.type ?? '';
+function getTypeTag(type: z.ZodType): string {
+  return getDef(type).type;
 }
 
 function isWrapperTag(tag: string): boolean {
-  return [
-    // v3 wrappers
-    'ZodOptional',
-    'ZodDefault',
-    'ZodEffects',
-    'ZodPipeline',
-    'ZodTransform',
-    // v4-style tags
-    'optional',
-    'default',
-    'effects',
-    'pipe',
-    'transform',
-  ].includes(tag);
+  return WRAPPER_TAGS.has(tag);
 }
 
-function isZodType(value: unknown): value is z.ZodTypeAny {
-  return typeof value === 'object' && value !== null && 'safeParse' in value;
+function isZodType(value: unknown): value is z.ZodType {
+  return value instanceof z.ZodType;
 }
 
-function nextWrappedType(type: z.ZodTypeAny): z.ZodTypeAny | undefined {
+function nextWrappedType(type: z.ZodType): z.ZodType | undefined {
   const def = getDef(type);
   const tag = getTypeTag(type);
 
@@ -66,80 +54,58 @@ function nextWrappedType(type: z.ZodTypeAny): z.ZodTypeAny | undefined {
     return undefined;
   }
 
-  // Different Zod versions/wrappers store the wrapped schema under different keys.
-  const candidates: unknown[] = [def.innerType, def.schema, def.in, def.out];
+  const candidates: unknown[] = [def.innerType, def.in, def.out];
   return candidates.find(isZodType);
 }
 
-/** Unwrap optional / default / effects layers and return the innermost base kind */
-function resolveBaseKind(type: z.ZodTypeAny): BaseKind {
-  // Iteratively unwrap all wrapper types to reach the base.
+interface TypeLayer {
+  def: ZodDefLike;
+  tag: string;
+  type: z.ZodType;
+}
+
+function collectTypeLayers(type: z.ZodType): TypeLayer[] {
+  const layers: TypeLayer[] = [];
   let current = type;
+
   while (true) {
+    const layer = {
+      def: getDef(current),
+      tag: getTypeTag(current),
+      type: current,
+    };
+    layers.push(layer);
+
     const next = nextWrappedType(current);
     if (!next) {
-      break;
+      return layers;
     }
+
     current = next;
   }
+}
 
-  switch (getTypeTag(current)) {
-    // v3 + v4 scalar tags
-    case 'ZodString':
-    case 'string':
-      return 'string';
-    case 'ZodNumber':
-    case 'number':
-      return 'number';
-    case 'ZodBoolean':
-    case 'boolean':
-      return 'boolean';
-    case 'ZodArray':
-    case 'array':
-      return 'array';
-    case 'ZodEnum':
-    case 'ZodNativeEnum':
-    // v4 enum/nativeEnum tags
-    case 'enum':
-    case 'nativeEnum':
-      return 'enum';
-    default:
-      // Fallback — treat everything else as string (covers coerce, literals, etc.)
-      return 'string';
-  }
+function baseLayerOf(type: z.ZodType): TypeLayer {
+  const layers = collectTypeLayers(type);
+  return layers[layers.length - 1] as TypeLayer;
+}
+
+/** Unwrap optional / default / effects layers and return the innermost base kind */
+function resolveBaseKind(type: z.ZodType): BaseKind {
+  const kind = KIND_BY_TAG[baseLayerOf(type).tag];
+  return kind ?? 'string';
 }
 
 /** Extract the .describe() text for a Zod type. */
-function describeOf(type: z.ZodTypeAny): string | undefined {
-  // Check each wrapping layer — describe() may live on any level.
-  let current = type;
-  while (true) {
-    const def = getDef(current);
-    const desc = def.description;
-    if (desc !== undefined && desc !== null) {
-      return desc;
+function describeOf(type: z.ZodType): string | undefined {
+  for (const layer of collectTypeLayers(type)) {
+    const description = z.globalRegistry.get(layer.type)?.description;
+    if (description !== undefined) {
+      return description;
     }
-
-    const next = nextWrappedType(current);
-    if (!next) {
-      break;
-    }
-    current = next;
   }
 
   return undefined;
-}
-
-/** Unwrap optional / default / effects to reach the base Zod type */
-function unwrapToBase(type: z.ZodTypeAny): z.ZodTypeAny {
-  let current = type;
-  while (true) {
-    const next = nextWrappedType(current);
-    if (!next) {
-      return current;
-    }
-    current = next;
-  }
 }
 
 /** Build a parseArgs option definition for one schema key */
@@ -173,26 +139,67 @@ function buildOption(
   return opt;
 }
 
+function enumChoicesFrom(baseLayer: TypeLayer): readonly (string | number)[] | undefined {
+  const { def } = baseLayer;
+
+  if (def.entries) {
+    const enumObj = def.entries;
+    return Object.values(enumObj)
+      .filter((v) => typeof v === 'string' || typeof v === 'number')
+      .map((v) => String(v));
+  }
+
+  return undefined;
+}
+
+function aliasForKey(aliases: AliasesMap, key: string): string | undefined {
+  return key in aliases ? aliases[key] : undefined;
+}
+
+function objectShapeFromSchema(schema: z.ZodObject): Record<string, z.ZodType> {
+  return schema.shape;
+}
+
+interface FieldConfig {
+  defaultValue?: unknown;
+  describe?: string;
+  hasDefault: boolean;
+  key: string;
+  optional: boolean;
+  parseOption: InternalParseOption;
+}
+
+function buildFieldConfig(key: string, fieldSchema: z.ZodType, aliases: AliasesMap): FieldConfig {
+  const kind = resolveBaseKind(fieldSchema);
+  const parseOption = buildOption(kind, aliasForKey(aliases, key));
+  const meta = fieldMetaOf(fieldSchema);
+  const choices = kind === 'enum' ? enumChoicesFrom(baseLayerOf(fieldSchema)) : undefined;
+
+  if (choices) {
+    parseOption.choices = choices;
+  }
+
+  return {
+    defaultValue: meta.defaultValue,
+    describe: describeOf(fieldSchema),
+    hasDefault: meta.hasDefault,
+    key,
+    optional: meta.optional,
+    parseOption,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Public API — zargv.from(schema, options?)
 // ---------------------------------------------------------------------------
 
-type ZodSchemaLike = {
-  parse(value: unknown): unknown;
-  safeParse(value: unknown): unknown;
-};
-
-// Keep this structural so both Zod v3 and v4 object schemas are accepted.
-type ZodObjectLike = ZodSchemaLike & { shape: Record<string, unknown> };
-
-export interface FromOptions<T extends ZodObjectLike = ZodObjectLike> {
+export interface FromOptions<T extends z.ZodObject = z.ZodObject> {
   /** Map of canonical key → short CLI flag character. Keys must match schema property names. */
   aliases?: Partial<Record<Extract<keyof T['shape'], string>, string>>;
 }
 
 /** Internal shape returned by `from()` — carries schema type for inference. */
-interface ArgsDefInternal<T extends ZodObjectLike> {
-  // biome-ignore lint/style/useNamingConvention: Internal brand key is intentionally namespaced.
+interface ArgsDefInternal<T extends z.ZodObject> {
   __zargv_schema__: T;
   _aliases: Record<string, string>;
   _parseArgsConfig: Record<string, InternalParseOption>;
@@ -208,51 +215,29 @@ interface FieldMeta {
 }
 
 /** Extract optional/default metadata from schema wrappers around a field. */
-function fieldMetaOf(type: z.ZodTypeAny): FieldMeta {
-  let current = type;
+function fieldMetaOf(type: z.ZodType): FieldMeta {
   let optional = false;
   let hasDefault = false;
   let defaultValue: unknown;
 
-  while (true) {
-    const def = getDef(current);
-    const tag = getTypeTag(current);
+  for (const { def, tag } of collectTypeLayers(type)) {
     switch (tag) {
-      case 'ZodOptional':
       case 'optional':
         optional = true;
-        if (!def.innerType || !isZodType(def.innerType)) {
-          return { defaultValue, hasDefault, optional };
-        }
-        current = def.innerType;
-        continue;
-      case 'ZodDefault':
+        break;
       case 'default':
         optional = true;
         hasDefault = true;
-        defaultValue = readDefaultValue(def.defaultValue);
-        if (!def.innerType || !isZodType(def.innerType)) {
-          return { defaultValue, hasDefault, optional };
-        }
-        current = def.innerType;
-        continue;
-      case 'ZodEffects':
-      case 'effects':
-      case 'ZodPipeline':
+        defaultValue = def.defaultValue;
+        break;
       case 'pipe':
-      case 'ZodTransform':
-      case 'transform': {
-        const next = nextWrappedType(current);
-        if (!next) {
-          return { defaultValue, hasDefault, optional };
-        }
-        current = next;
-        continue;
-      }
+        break;
       default:
         return { defaultValue, hasDefault, optional };
     }
   }
+
+  return { defaultValue, hasDefault, optional };
 }
 
 /**
@@ -260,18 +245,22 @@ function fieldMetaOf(type: z.ZodTypeAny): FieldMeta {
  * `zargv.command()`. The returned value carries the original Zod type through
  * TypeScript generics so handler inference works automatically.
  */
-export function from<T extends ZodObjectLike>(schema: T, options?: FromOptions<T>): ArgsDefInternal<T> {
-  const aliases = options?.aliases ?? {};
+export function from<T extends z.ZodObject>(schema: T, options?: FromOptions<T>): ArgsDefInternal<T> {
+  const aliases: AliasesMap = {};
+  const rawAliases = options?.aliases as Record<string, string | undefined> | undefined;
+  if (rawAliases) {
+    for (const [key, alias] of Object.entries(rawAliases)) {
+      if (alias !== undefined) {
+        aliases[key] = alias;
+      }
+    }
+  }
 
-  // Tag inspection still uses Zod internals; cast stays local to avoid leaking
-  // version-specific class constraints into the public from() signature.
-  const schemaTag = getTypeTag(schema as unknown as z.ZodTypeAny);
-  // v3 object tag (`ZodObject`) and v4 object tag (`object`).
-  if (schemaTag !== 'ZodObject' && schemaTag !== 'object') {
+  if (getTypeTag(schema) !== 'object') {
     throw new TypeError('zargv.from() requires a ZodObject schema');
   }
 
-  const shape = schema.shape;
+  const shape = objectShapeFromSchema(schema);
 
   // Build parseArgs options and describe map from each key.
   const parseOptions: Record<string, InternalParseOption> = {};
@@ -279,48 +268,18 @@ export function from<T extends ZodObjectLike>(schema: T, options?: FromOptions<T
   const optionalMap = new Map<string, boolean>();
   const defaultMap = new Map<string, unknown>();
 
-  for (const [key, fieldSchema] of Object.entries(shape as Record<string, z.ZodTypeAny>)) {
-    const kind = resolveBaseKind(fieldSchema);
-    const alias = key in aliases ? (aliases as Record<string, string | undefined>)[key] : undefined;
-    const meta = fieldMetaOf(fieldSchema);
-    parseOptions[key] = buildOption(kind, alias);
+  for (const [key, fieldSchema] of Object.entries(shape)) {
+    const config = buildFieldConfig(key, fieldSchema, aliases);
 
-    // For enums / native enums, pass choices to parseArgs so --help can show them.
-    if (kind === 'enum') {
-      const base = unwrapToBase(fieldSchema as z.ZodTypeAny);
-      const baseDef = getDef(base);
-      const baseTag = getTypeTag(base);
-      // v3 enum stores options in `_def.values`.
-      if ((baseTag === 'ZodEnum' || baseTag === 'enum') && Array.isArray(baseDef.values)) {
-        parseOptions[key].choices = baseDef.values;
-      } else if (
-        // v3 native enum stores key/value object in `_def.values`.
-        (baseTag === 'ZodNativeEnum' || baseTag === 'nativeEnum')
-        && baseDef.values
-        && !Array.isArray(baseDef.values)
-      ) {
-        const enumObj = baseDef.values;
-        parseOptions[key].choices = Object.entries(enumObj)
-          .filter(([, v]) => typeof v === 'string' || typeof v === 'number')
-          .map(([, v]) => String(v));
-      } else if (baseDef.entries) {
-        // v4 may expose enum entries under `_def.entries`.
-        const enumObj = baseDef.entries;
-        parseOptions[key].choices = Object.values(enumObj)
-          .filter((v) => typeof v === 'string' || typeof v === 'number')
-          .map((v) => String(v));
-      }
-    }
-
-    describeMap.set(key, describeOf(fieldSchema as z.ZodTypeAny));
-    optionalMap.set(key, meta.optional);
-    if (meta.hasDefault) {
-      defaultMap.set(key, meta.defaultValue);
+    parseOptions[key] = config.parseOption;
+    describeMap.set(config.key, config.describe);
+    optionalMap.set(config.key, config.optional);
+    if (config.hasDefault) {
+      defaultMap.set(config.key, config.defaultValue);
     }
   }
 
   return {
-    // biome-ignore lint/style/useNamingConvention: Internal brand key is intentionally namespaced.
     __zargv_schema__: schema,
     _aliases: aliases,
     _defaultMap: defaultMap,

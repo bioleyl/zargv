@@ -20,7 +20,7 @@ A **type-safe CLI framework** powered by [Zod](https://zod.dev). Define your com
 ## Installation
 
 ```bash
-npm install @bioleyl/zargv zod
+npm install @bioleyl/zargv zod@^4
 ```
 
 ---
